@@ -1,0 +1,17 @@
+build/
+install/
+log/
+logs/
+
+# Vendored by vcs import; see ur5_integration.repos
+src/robotiq_hande_description/
+src/robotiq_hande_driver/
+
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+.venv/
+*~
+.#*

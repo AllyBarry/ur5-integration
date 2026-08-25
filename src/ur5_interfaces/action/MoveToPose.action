@@ -1,0 +1,33 @@
+# Goal
+#
+# Target pose for the tool0 frame, expressed in the WORLD frame, in metres.
+#
+# z is WORLD z, so the table surface is 0.80 and not 0. No table offset is
+# applied anywhere in the motion path. If you would rather think in "height of
+# the fingertips above the table", convert at the call site with
+# ur5_control.geometry.tip_above_table_to_world_z().
+float64 x
+float64 y
+float64 z
+
+# "top" | "side" | "diagonal" | "none"
+#   none -> position-only goal, planner picks any reachable orientation.
+string grasp_type
+
+# "grasp1" | "grasp2" | "none"
+#   none -> approach axis pinned by grasp_type, wrist roll about it left free.
+#   Ignored entirely when grasp_type is "none".
+string grasp_orientation
+
+# Force the Cartesian (Pilz LIN) planner regardless of goal distance.
+bool force_linear
+
+# 0.0 -> use the server's default scaling.
+float64 velocity_scaling
+---
+# Result
+bool success
+string message
+---
+# Feedback
+string status

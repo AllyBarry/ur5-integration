@@ -1,0 +1,40 @@
+# Named joint-space configurations for move_to_named_pose.
+#
+# Joint angles in radians, UR5 joint order. To add a pose: jog the arm to it,
+# read the angles off `ros2 topic echo /joint_states --once`, paste them here,
+# rebuild (or edit the installed copy under install/ for a quick test).
+#
+# "ready" is known good on this rig and is also the mock-hardware start pose
+# (see initial_positions in ur5_bringup's xacro; keep the two in step). The
+# others are NOT yet verified on hardware -- preview them in RViz, or with
+# use_mock_hardware:=true, before sending them to the real arm.
+
+named_poses:
+  # Reset / recovery pose. Arm folded up over the table, out of the workspace.
+  ready:
+    shoulder_pan_joint: 0.0
+    shoulder_lift_joint: -1.57
+    elbow_joint: -1.57
+    wrist_1_joint: -1.57
+    wrist_2_joint: 1.57
+    wrist_3_joint: 0.0
+
+  # UNVERIFIED. Where the follow-hand demo parks while waiting for a target:
+  # elbow a little lower than "ready" so the first move towards a hand held
+  # over the table is short. Verify in RViz first.
+  watch:
+    shoulder_pan_joint: 0.0
+    shoulder_lift_joint: -1.30
+    elbow_joint: -1.60
+    wrist_1_joint: -1.80
+    wrist_2_joint: 1.57
+    wrist_3_joint: 0.0
+
+  # UNVERIFIED. Tucked-in parking pose for the end of a session.
+  stow:
+    shoulder_pan_joint: 0.0
+    shoulder_lift_joint: -2.20
+    elbow_joint: -2.40
+    wrist_1_joint: -0.10
+    wrist_2_joint: 1.57
+    wrist_3_joint: 0.0

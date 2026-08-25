@@ -1,0 +1,303 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro" name="ur5_hand_e">
+<!--
+  UR5 + Robotiq Hand-E on the RAIL table rig.
+
+  use_mock_hardware, enable_grasped_object and gripper_use_fake_hardware are
+  all real arguments here: each one is declared AND passed through to the
+  macro that acts on it. Check that before adding another.
+
+  The world -> table -> arm chain is what puts the table surface at
+  z = table_height (0.8) in the world frame. ur5_control/geometry.py hardcodes
+  the same 0.8; if you change it here, change it there.
+
+  Requires robotiq_hande_description on the AMENT_PREFIX_PATH; see
+  ur5_integration.repos.
+-->
+<!-- Table Parameters -->
+<xacro:property name="table_height" value="0.8" />
+<xacro:property name="table_width" value="2.6" />
+<xacro:property name="table_depth" value="1.6" />
+
+<!-- Ceiling Parameters -->
+<!-- Computed up here so obstacle Z bounds can reference the ceiling's
+     lower face and fit exactly between table-top and ceiling-bottom. -->
+<xacro:property name="ceiling_thickness" value="0.05" />
+<!-- 1.0 m of headroom over a UR5 whose fully-extended reach upward is about
+     0.92 m from the base plus the Hand-E: the arm CANNOT stand upright under
+     this ceiling, by design. Anything that commands a near-vertical
+     configuration will be refused as a collision, which is the intent, but it
+     also means the mock-hardware initial pose has to be chosen with care (see
+     initial_positions further down). -->
+<xacro:property name="ceiling_clearance_above_robot" value="1.0" />
+<xacro:property name="ceiling_bottom_z" value="${table_height + ceiling_clearance_above_robot}" />
+<xacro:property name="ceiling_center_z" value="${ceiling_bottom_z + ceiling_thickness/2}" />
+
+<!-- Workspace Obstacle Parameters -->
+<!-- Z spans only the open volume between table top and ceiling bottom,
+     so it doesn't overlap either. -->
+<xacro:property name="workspace_x_min" value="-1.0" />
+<xacro:property name="workspace_x_max" value="1.0" />
+<xacro:property name="workspace_y_min" value="-0.6" />
+<xacro:property name="workspace_y_max" value="-0.4" />
+<xacro:property name="workspace_z_min" value="${table_height + 0.001}" />
+<xacro:property name="workspace_z_max" value="${ceiling_bottom_z - 0.001}" />
+<xacro:property name="workspace_size_x" value="${workspace_x_max - workspace_x_min}" />
+<xacro:property name="workspace_size_y" value="${workspace_y_max - workspace_y_min}" />
+<xacro:property name="workspace_size_z" value="${workspace_z_max - workspace_z_min}" />
+<xacro:property name="workspace_center_x" value="${(workspace_x_max + workspace_x_min)/2}" />
+<xacro:property name="workspace_center_y" value="${(workspace_y_max + workspace_y_min)/2}" />
+<xacro:property name="workspace_center_z" value="${(workspace_z_max + workspace_z_min)/2}" />
+
+<!-- Standing Area Obstacle Parameters -->
+<!-- Same idea: only the open volume between table top and ceiling bottom. -->
+<xacro:property name="standing_area_x_min" value="-1.0" />
+<xacro:property name="standing_area_x_max" value="1.0" />
+<xacro:property name="standing_area_y_min" value="0.7" />
+<xacro:property name="standing_area_y_max" value="0.8" />
+<xacro:property name="standing_area_z_min" value="${table_height + 0.001}" />
+<xacro:property name="standing_area_z_max" value="${ceiling_bottom_z - 0.001}" />
+<xacro:property name="standing_area_size_x" value="${standing_area_x_max - standing_area_x_min}" />
+<xacro:property name="standing_area_size_y" value="${standing_area_y_max - standing_area_y_min}" />
+<xacro:property name="standing_area_size_z" value="${standing_area_z_max - standing_area_z_min}" />
+<xacro:property name="standing_area_center_x" value="${(standing_area_x_max + standing_area_x_min)/2}" />
+<xacro:property name="standing_area_center_y" value="${(standing_area_y_max + standing_area_y_min)/2}" />
+<xacro:property name="standing_area_center_z" value="${(standing_area_z_max + standing_area_z_min)/2}" />
+
+<xacro:property name="grasped_object_size" value="0.1" />
+<!-- Should be 16cm + size/2 -->
+<xacro:property name="grasped_object_offset_z" value="0.21" /> 
+
+<!-- Declare arguments -->
+<xacro:arg name="name" default="ur"/>
+<xacro:arg name="tf_prefix" default=""/>
+<xacro:arg name="joint_limit_params" default="$(find ur_description)/config/ur5/joint_limits.yaml"/>
+<xacro:arg name="kinematics_params" default="$(find ur_description)/config/ur5/default_kinematics.yaml"/>
+<xacro:arg name="physical_params" default="$(find ur_description)/config/ur5/physical_parameters.yaml"/>
+<xacro:arg name="visual_params" default="$(find ur_description)/config/ur5/visual_parameters.yaml"/>
+<xacro:arg name="use_mock_hardware" default="false"/>
+<xacro:arg name="robot_ip" default="0.0.0.0"/>
+<xacro:arg name="script_filename" default="$(find ur_client_library)/resources/external_control.urscript"/>
+<xacro:arg name="input_recipe_filename" default="$(find ur_robot_driver)/resources/rtde_input_recipe.txt"/>
+<xacro:arg name="output_recipe_filename" default="$(find ur_robot_driver)/resources/rtde_output_recipe.txt"/>
+<xacro:arg name="simulation_data" default="$(find ur_robot_driver)/resources/rtde_input_recipe.txt"/>
+<xacro:arg name="enable_grasped_object" default="true"/>
+<xacro:arg name="gripper_use_fake_hardware" default="true"/>
+
+<!-- Includes -->
+<xacro:include filename="$(find ur_robot_driver)/urdf/ur.ros2_control.xacro" />
+<xacro:include filename="$(find ur_description)/urdf/ur_macro.xacro"/>
+<xacro:include filename="$(find robotiq_hande_description)/urdf/robotiq_hande_gripper.xacro"/>
+
+<!-- World Link -->
+<link name="world"/>
+
+<!-- Table Link -->
+<link name="table">
+<visual>
+<origin xyz="0 0 ${table_height/2}" rpy="0 0 0"/>
+<geometry>
+<box size="${table_width} ${table_depth} ${table_height}"/>
+</geometry>
+<material name="Grey">
+<color rgba="0.5 0.5 0.5 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="0 0 ${table_height/2}" rpy="0 0 0"/>
+<geometry>
+<box size="${table_width} ${table_depth} ${table_height}"/>
+</geometry>
+</collision>
+</link>
+
+<!-- Connect Table to World -->
+<joint name="world_to_table" type="fixed">
+<parent link="world"/>
+<child link="table"/>
+<origin xyz="0 0 0" rpy="0 0 0"/>
+</joint>
+
+<!-- Workspace Obstacle Link -->
+<link name="workspace_obstacle">
+<visual>
+<origin xyz="0 0 0" rpy="0 0 0"/>
+<geometry>
+<box size="${workspace_size_x} ${workspace_size_y} ${workspace_size_z}"/>
+</geometry>
+<material name="ObstacleRed">
+<color rgba="0.8 0.2 0.2 0.4"/>
+</material>
+</visual>
+<collision>
+<origin xyz="0 0 0" rpy="0 0 0"/>
+<geometry>
+<box size="${workspace_size_x} ${workspace_size_y} ${workspace_size_z}"/>
+</geometry>
+</collision>
+</link>
+
+<!-- Connect Workspace Obstacle to World -->
+<joint name="world_to_workspace_obstacle" type="fixed">
+<parent link="world"/>
+<child link="workspace_obstacle"/>
+<origin xyz="${workspace_center_x} ${workspace_center_y} ${workspace_center_z}" rpy="0 0 0"/>
+</joint>
+
+<!-- Standing Area Obstacle Link -->
+<link name="standing_area">
+<visual>
+<origin xyz="0 0 0" rpy="0 0 0"/>
+<geometry>
+<box size="${standing_area_size_x} ${standing_area_size_y} ${standing_area_size_z}"/>
+</geometry>
+<material name="StandingAreaOrange">
+<color rgba="0.9 0.5 0.1 0.4"/>
+</material>
+</visual>
+<collision>
+<origin xyz="0 0 0" rpy="0 0 0"/>
+<geometry>
+<box size="${standing_area_size_x} ${standing_area_size_y} ${standing_area_size_z}"/>
+</geometry>
+</collision>
+</link>
+
+<!-- Connect Standing Area to World -->
+<joint name="world_to_standing_area" type="fixed">
+<parent link="world"/>
+<child link="standing_area"/>
+<origin xyz="${standing_area_center_x} ${standing_area_center_y} ${standing_area_center_z}" rpy="0 0 0"/>
+</joint>
+
+<!-- Ceiling Obstacle Link -->
+<link name="ceiling">
+<visual>
+<origin xyz="0 0 0" rpy="0 0 0"/>
+<geometry>
+<box size="${table_width} ${table_depth} ${ceiling_thickness}"/>
+</geometry>
+<material name="CeilingBlue">
+<color rgba="0.3 0.5 0.8 0.4"/>
+</material>
+</visual>
+<collision>
+<origin xyz="0 0 0" rpy="0 0 0"/>
+<geometry>
+<box size="${table_width} ${table_depth} ${ceiling_thickness}"/>
+</geometry>
+</collision>
+</link>
+
+<!-- Connect Ceiling to World -->
+<joint name="world_to_ceiling" type="fixed">
+<parent link="world"/>
+<child link="ceiling"/>
+<origin xyz="0 0 ${ceiling_center_z}" rpy="0 0 0"/>
+</joint>
+
+<!-- UR Robot: Parent is now 'table' instead of 'world' -->
+<xacro:ur_robot
+name="$(arg name)"
+tf_prefix="$(arg tf_prefix)"
+parent="table"
+joint_limits_parameters_file="$(arg joint_limit_params)"
+kinematics_parameters_file="$(arg kinematics_params)"
+physical_parameters_file="$(arg physical_params)"
+visual_parameters_file="$(arg visual_params)">
+<!-- Origin is set to the top surface of the table -->
+<origin xyz="0 0 ${table_height}" rpy="0 0 0" />
+</xacro:ur_robot>
+
+<!-- Control Hardware Interface -->
+<!-- SIM-HOOK: use_mock_hardware is forwarded here so that
+     `ur_control.launch.py use_mock_hardware:=true` actually reaches the
+     ros2_control plugin. Declaring the argument without forwarding it here
+     silently leaves mock-hardware runs talking to the real robot's RTDE
+     ports, which fails far from its cause. -->
+<xacro:ur_ros2_control
+name="$(arg name)"
+tf_prefix="$(arg tf_prefix)"
+robot_ip="$(arg robot_ip)"
+kinematics_parameters_file="$(arg kinematics_params)"
+script_filename="$(arg script_filename)"
+input_recipe_filename="$(arg input_recipe_filename)"
+output_recipe_filename="$(arg output_recipe_filename)"
+robot_receive_timeout="1.0"
+use_mock_hardware="$(arg use_mock_hardware)"
+mock_sensor_commands="false"
+initial_positions="${dict(shoulder_pan_joint=0.0,shoulder_lift_joint=-1.57,elbow_joint=-1.57,wrist_1_joint=-1.57,wrist_2_joint=1.57,wrist_3_joint=0.0)}"
+/>
+<!-- initial_positions matters only for mock hardware, and it is not cosmetic.
+     ur.ros2_control's default is (0, -1.57, 0, -1.57, 0, 0), which stands the
+     arm straight up with tool0 at world z=1.80, inside the ceiling slab
+     modelled below. Every plan from there aborts with START_STATE_IN_COLLISION
+     ("ceiling - robotiq_hande_link, ceiling - wrist_3_link, ...") before the
+     planner is even called, which reads as "MoveIt is broken" rather than "the
+     start state is bad". The values above are the 'ready' pose from
+     ur5_control/config/named_poses.yaml; keep the two in step. -->
+
+<!-- Hand-E Gripper -->
+<!-- use_fake_hardware defaults to TRUE ON PURPOSE, and is not a mistake or a
+     leftover. On this rig the gripper is driven by ur5_control/gripper_server,
+     which speaks Modbus RTU to /tmp/ttyUR directly. If robotiq_hande_driver's
+     hardware interface were live it would open the same port and the two would
+     fight over it. So ros2_control gets the mock plugin (kinematics + TF for
+     the fingers only) and the real commands go through our action server.
+     Only set gripper_use_fake_hardware:=false if you are deliberately
+     switching to the ros2_control gripper path, and then don't run
+     gripper_server. -->
+<xacro:robotiq_hande_gripper
+name="hand_e"
+parent="tool0"
+prefix="$(arg tf_prefix)"
+grip_pos_min="0.0"
+grip_pos_max="0.025"
+tty_port="/tmp/ttyUR"
+baudrate="115200"
+parity="N"
+data_bits="8"
+stop_bit="1"
+slave_id="9"
+use_fake_hardware="$(arg gripper_use_fake_hardware)"
+/>
+
+<!-- Fake Grasped Object: cube attached to the gripper. -->
+<!-- Collision purpose: pad the planned trajectory so a real held object cannot strike the arm. -->
+<!-- Collisions with wrists/gripper/table must be disabled in the SRDF. -->
+<!-- Off (enable_grasped_object:=false) whenever the arm is empty-handed, which
+     includes every hand-following demo: an always-on 10cm collision cube
+     around the gripper makes near-person poses fail to plan for no reason.
+     Note also that the stock SRDF disables no collisions for this link, so
+     enabling it needs the gripper pairs disabled first. -->
+<xacro:if value="$(arg enable_grasped_object)">
+<link name="grasped_object">
+<visual>
+<origin xyz="0 0 0" rpy="0 0 0"/>
+<geometry>
+<box size="${grasped_object_size} ${grasped_object_size} ${grasped_object_size}"/>
+</geometry>
+<material name="GraspedGreen">
+<color rgba="0.2 0.7 0.3 0.5"/>
+</material>
+</visual>
+<collision>
+<origin xyz="0 0 0" rpy="0 0 0"/>
+<geometry>
+<box size="${grasped_object_size} ${grasped_object_size} ${grasped_object_size}"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="0 0 0" rpy="0 0 0"/>
+<mass value="0.001"/>
+<inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+</inertial>
+</link>
+
+<joint name="tool0_to_grasped_object" type="fixed">
+<parent link="tool0"/>
+<child link="grasped_object"/>
+<origin xyz="0 0 ${grasped_object_offset_z}" rpy="0 0 0"/>
+</joint>
+</xacro:if>
+</robot>

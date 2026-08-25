@@ -1,0 +1,18 @@
+repositories:
+  # Meshes, xacro macros and the ros2_control description for the Hand-E.
+  # ur5_bringup's URDF includes robotiq_hande_gripper.xacro from it.
+  # Pinned: this is the version the rig's URDF was built and tested against.
+  # Moving the tag is fine, but re-check the link names the xacro references.
+  src/robotiq_hande_description:
+    type: git
+    url: https://github.com/AGH-CEAI/robotiq_hande_description.git
+    version: v0.2.0-jazzy
+
+  # Only needed if you drive the gripper through ros2_control instead of
+  # ur5_control/gripper_server. This stack does NOT: the hardware interface
+  # would fight gripper_server over /tmp/ttyUR. Kept here because the
+  # description package's README points at it and someone will ask.
+  # src/robotiq_hande_driver:
+  #   type: git
+  #   url: https://github.com/AGH-CEAI/robotiq_hande_driver.git
+  #   version: jazzy

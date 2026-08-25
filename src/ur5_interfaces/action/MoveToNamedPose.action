@@ -1,0 +1,16 @@
+# Goal
+#
+# Joint-space move to a named configuration from
+# ur5_control/config/named_poses.yaml (e.g. "ready", "watch", "stow").
+# Empty string -> "ready".
+#
+# Joint-space so it works even when the arm has wound itself into a
+# configuration where constrained Cartesian planning starts failing.
+string pose_name
+---
+# Result
+bool success
+string message
+---
+# Feedback
+string status

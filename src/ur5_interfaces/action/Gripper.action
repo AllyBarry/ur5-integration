@@ -1,0 +1,16 @@
+# Goal
+uint8 target_position    # 0 = fully open, 255 = fully closed
+uint8 force              # 0-255, force applied during motion (0 -> server default)
+uint8 speed              # 0-255, speed of motion (0 -> server default)
+---
+# Result
+bool success                # did the motion complete without error?
+bool object_detected        # did the gripper stop early due to contact?
+uint8 final_position        # actual gripper position after motion (0-255)
+uint8 obj_status            # raw Robotiq OBJ field (0=moving, 1=stopped opening,
+                            #                         2=stopped closing on object,
+                            #                         3=reached target without contact)
+string message
+---
+# Feedback
+uint8 current_position

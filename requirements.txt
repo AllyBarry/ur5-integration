@@ -1,0 +1,10 @@
+# Python packages not supplied by rosdep/apt.
+#
+# Everything else this workspace needs is a ROS package -- install those with
+#   rosdep install --from-paths src --ignore-src -r -y
+# rather than pip.
+
+# gripper_server: Modbus RTU over the socat-created serial port.
+# Usually already present as the ros-jazzy-... / python3-serial apt package;
+# listed here for venv-based setups. Not needed with gripper_mock:=true.
+pyserial>=3.5
