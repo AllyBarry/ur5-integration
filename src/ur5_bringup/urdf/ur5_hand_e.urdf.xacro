@@ -215,6 +215,18 @@ visual_parameters_file="$(arg visual_params)">
      ros2_control plugin. Declaring the argument without forwarding it here
      silently leaves mock-hardware runs talking to the real robot's RTDE
      ports, which fails far from its cause. -->
+<!-- 0.2 is the MAXIMUM the client library accepts for realtime commands
+     (RobotReceiveTimeout::MAX_RT_RECEIVE_TIMEOUT_MS = 200ms). This was
+     previously 1.0, which urcl silently clamped to 0.2 while logging
+     "Robot receive timeout 1000ms is above the maximum allowed timeout
+     for realtime commands 200" on every write. 0.2 is therefore a
+     no-op behaviour change that just removes the log spam.
+     The ur_robot_driver default is 0.04 (5 cycles at the UR5's 125Hz /
+     8ms control rate). 0.04 is the safer value - it is how long the
+     control script on the robot keeps going before deciding the driver
+     is dead - but it is NOT what this rig has been running, so do not
+     drop it to 0.04 without watching for protective stops caused by
+     control-loop stalls (e.g. ros2_vlm_vision starving the CM). -->
 <xacro:ur_ros2_control
 name="$(arg name)"
 tf_prefix="$(arg tf_prefix)"
@@ -223,7 +235,7 @@ kinematics_parameters_file="$(arg kinematics_params)"
 script_filename="$(arg script_filename)"
 input_recipe_filename="$(arg input_recipe_filename)"
 output_recipe_filename="$(arg output_recipe_filename)"
-robot_receive_timeout="1.0"
+robot_receive_timeout="0.2"
 use_mock_hardware="$(arg use_mock_hardware)"
 mock_sensor_commands="false"
 initial_positions="${dict(shoulder_pan_joint=0.0,shoulder_lift_joint=-1.57,elbow_joint=-1.57,wrist_1_joint=-1.57,wrist_2_joint=1.57,wrist_3_joint=0.0)}"

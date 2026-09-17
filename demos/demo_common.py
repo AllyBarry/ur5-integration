@@ -26,27 +26,43 @@ GRIPPER_CLOSED = 255
 
 
 class HandTargetMonitor:
-    """Tracks the most recent hand target and how stale it is.
+    """Tracks the most recent target and how stale it is.
 
     Freshness is judged from the message's header stamp, not from arrival time:
     the bridge republishes a smoothed estimate at a fixed rate, and stamps it
     with when the target was actually OBSERVED. A detector that has frozen
     would otherwise look perfectly healthy.
+
+    `label_filter` is an optional predicate on TrackedTarget.label. It exists so
+    a demo can say which KIND of target it wants (a hand, a specific tag) while
+    the one-topic contract stays intact -- the seam is still
+    /perception/hand_target, the consumer just declines to follow a point that
+    is not the thing it was asked to follow. Rejected labels are remembered so
+    the demo can tell "nothing is publishing" apart from "something is
+    publishing, but not what you asked for", which are very different fixes.
     """
 
-    def __init__(self, node: Node, timeout_sec=0.75, topic=HAND_TARGET_TOPIC):
+    def __init__(self, node: Node, timeout_sec=0.75, topic=HAND_TARGET_TOPIC,
+                 label_filter=None):
         self._node = node
         self._timeout = timeout_sec
+        self._label_filter = label_filter
         self._position = None
         self._stamp = None
         self._confidence = 0.0
+        self._label = ''
         self._ever_seen = False
+        self._rejected_labels = set()
         node.create_subscription(TrackedTarget, topic, self._on_target, 10)
 
     def _on_target(self, msg: TrackedTarget):
+        if self._label_filter is not None and not self._label_filter(msg.label):
+            self._rejected_labels.add(msg.label)
+            return
         self._position = (msg.position.x, msg.position.y, msg.position.z)
         self._stamp = rclpy.time.Time.from_msg(msg.header.stamp)
         self._confidence = msg.confidence
+        self._label = msg.label
         self._ever_seen = True
 
     @property
@@ -56,6 +72,16 @@ class HandTargetMonitor:
     @property
     def confidence(self):
         return self._confidence
+
+    @property
+    def label(self):
+        """Label of the most recent ACCEPTED target ('' if there has been none)."""
+        return self._label
+
+    @property
+    def rejected_labels(self):
+        """Labels seen on the topic but refused by label_filter."""
+        return frozenset(self._rejected_labels)
 
     def age(self):
         """Seconds since the target was observed, or None if never seen."""

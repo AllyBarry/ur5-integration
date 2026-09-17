@@ -25,6 +25,14 @@ detections  Subscribe to a vision_msgs/Detection3DArray, keep the highest-score
             currently runs AprilTag only -- no hand/keypoint detector exists yet.
             See docs/CAMERA_STACK.md for what to add.
 
+Labelling
+---------
+TrackedTarget.label says WHAT is being tracked, and consumers may filter on it
+(demos/follow_hand.py --target). Left empty, `label` is derived from the source:
+the tag frame for apriltag ('tag_1'), `detection_label` for detections ('hand').
+Set it explicitly to override. It used to default to 'hand' on every path, which
+made an AprilTag indistinguishable from a hand detection downstream.
+
 Smoothing
 ---------
 Raw detections jitter, and jitter becomes arm motion. An exponential moving
@@ -58,7 +66,8 @@ class HandTargetBridge(Node):
 
         self.declare_parameter('source', SOURCE_APRILTAG)
         self.declare_parameter('world_frame', 'world')
-        self.declare_parameter('label', 'hand')
+        # '' -> derive from the source; see "Labelling" above.
+        self.declare_parameter('label', '')
         # apriltag source
         self.declare_parameter('tag_frame', 'tag_1')
         # detections source
@@ -83,6 +92,12 @@ class HandTargetBridge(Node):
         if self._source not in VALID_SOURCES:
             raise ValueError(
                 f"source '{self._source}' not in {VALID_SOURCES}"
+            )
+
+        if not self._label:
+            self._label = (
+                self._tag_frame if self._source == SOURCE_APRILTAG
+                else self.get_parameter('detection_label').value
             )
 
         self._smoothed = None       # (x, y, z)
@@ -123,6 +138,7 @@ class HandTargetBridge(Node):
 
         self.get_logger().info(
             f"hand_target_bridge ready -> /perception/hand_target "
+            f"as label '{self._label}' "
             f"(alpha={self._alpha}, timeout={self._timeout}s)"
         )
 

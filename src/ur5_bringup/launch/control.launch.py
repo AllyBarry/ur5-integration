@@ -18,6 +18,10 @@ hand_source
   mock        SIM-HOOK. Synthetic hand, no camera at all.
   none        No perception; run the bridge yourself, or publish
               /perception/hand_target from your own node.
+
+The bridge labels what it publishes after the source -- the tag frame for
+apriltag ('tag_1'), the detection class for detections ('hand') -- so a consumer
+can insist on one kind of target (demos/follow_hand.py --target tag).
 """
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument

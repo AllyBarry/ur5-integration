@@ -27,7 +27,7 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 
 # Default rig IP; override with robot_ip:=...
-DEFAULT_ROBOT_IP = "10.10.187.168"
+DEFAULT_ROBOT_IP = "192.168.50.21"
 
 # Arm calibration produced by ur_calibration. Without it the kinematic model is
 # the nominal UR5 rather than this specific arm. Defaulted only if the file is

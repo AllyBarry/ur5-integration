@@ -50,8 +50,8 @@ echo
 echo "Gripper serial:"
 if [ -e /tmp/ttyUR ]; then ok "/tmp/ttyUR exists"; else
   bad "/tmp/ttyUR"
-  note "socat -d -d pty,link=/tmp/ttyUR,raw,echo=0 tcp:10.10.187.168:54322"
-  note "(needs gripper_bridge.py running on the robot: ssh root@10.10.187.168)"
+  note "socat -d -d pty,link=/tmp/ttyUR,raw,echo=0 tcp:192.168.50.21:54322"
+  note "(needs gripper_bridge.py running on the robot: ssh root@192.168.50.21)"
   note "or run the stack with gripper_mock:=true"
 fi
 echo

@@ -19,6 +19,30 @@ Input is /perception/hand_target (ur5_interfaces/TrackedTarget, world frame),
 whatever produced it: an AprilTag on a wristband, a hand detector on the Jetson,
 or mock_hand_publisher. See docs/CAMERA_STACK.md.
 
+What gets followed
+------------------
+WHICH detector runs is a launch-time choice, not a flag here -- perception talks
+to motion through one topic, and this demo stays on the motion side of that
+seam:
+
+    ros2 launch ur5_bringup control.launch.py hand_source:=apriltag tag_frame:=tag_1
+    ros2 launch ur5_bringup control.launch.py hand_source:=detections
+    ros2 launch ur5_bringup control.launch.py hand_source:=mock
+
+--target says which kind of target this run is WILLING to follow, matched
+against TrackedTarget.label:
+
+    any    (default) follow whatever arrives -- how this demo has always behaved
+    tag    follow an AprilTag ('tag_1', 'tag_3', ...)
+    hand   follow a hand detection ('hand')
+
+Use it when more than one source can publish, or as an assertion that the stack
+underneath you is the one you think it is: with --target tag and a mock hand
+running, this refuses to move and says so, instead of quietly following the
+wrong point. To follow one SPECIFIC tag, pass --target-label tag_3 -- but note
+the bridge tracks a single tag frame at a time, so the tag is really chosen by
+tag_frame:= on control.launch.py and --target-label only holds it to that.
+
 The control chain, in order
 ---------------------------
   target ->  standoff  ->  safety clamp  ->  step leash  ->  deadband  ->  command
@@ -100,6 +124,30 @@ MODE_SERVO = 'servo'
 
 DEFAULT_RATE = {MODE_PLAN: 2.0, MODE_SERVO: 50.0}
 
+TARGET_ANY = 'any'
+TARGET_TAG = 'tag'
+TARGET_HAND = 'hand'
+
+# hand_target_bridge labels an AprilTag target with its TF frame name, so every
+# tag label starts with this. Matching the prefix rather than one exact frame
+# keeps --target tag working when the wristband tag is swapped for another.
+TAG_LABEL_PREFIX = 'tag'
+
+
+def label_matcher(target_kind, explicit_label):
+    """(--target, --target-label) -> (predicate or None, human description).
+
+    None means "accept anything", which is what the monitor wants for no filter.
+    """
+    if explicit_label:
+        return (lambda label: label == explicit_label), f"label '{explicit_label}'"
+    if target_kind == TARGET_TAG:
+        return ((lambda label: label.startswith(TAG_LABEL_PREFIX)),
+                f"AprilTag targets (label '{TAG_LABEL_PREFIX}*')")
+    if target_kind == TARGET_HAND:
+        return (lambda label: label == TARGET_HAND), "hand targets (label 'hand')"
+    return None, "any target"
+
 
 class HandFollower(Node):
     def __init__(self, args):
@@ -109,7 +157,12 @@ class HandFollower(Node):
         self._tf_buffer = tf2_ros.Buffer()
         self._tf_listener = tf2_ros.TransformListener(self._tf_buffer, self)
 
-        self._monitor = HandTargetMonitor(self, timeout_sec=args.target_timeout)
+        self._match_label, self._target_desc = label_matcher(
+            args.target, args.target_label
+        )
+        self._monitor = HandTargetMonitor(
+            self, timeout_sec=args.target_timeout, label_filter=self._match_label
+        )
         self._motion = MotionClients(self)
 
         self._goal_handle = None      # in-flight MoveToPose, plan mode
@@ -130,7 +183,8 @@ class HandFollower(Node):
         self.create_timer(self._period, self._tick)
 
         self.get_logger().info(
-            f"follow_hand: mode={args.mode}, rate={rate:g}Hz, "
+            f"follow_hand: following {self._target_desc}, "
+            f"mode={args.mode}, rate={rate:g}Hz, "
             f"standoff={args.standoff:.3f}m, max_step={args.max_step:.3f}m, "
             f"deadband={args.deadband:.3f}m, max_y={args.max_y:.2f}m"
             f"{'  [DRY RUN]' if args.dry_run else ''}"
@@ -211,10 +265,12 @@ class HandFollower(Node):
         return None
 
     def _desired_pose(self, target):
-        """target (hand position, world) -> commanded tool0 position, world.
+        """target (tracked position, world) -> commanded tool0 position, world.
 
-        Returns (position, clamped) or (None, False) if the target is somewhere
-        we refuse to follow at all.
+        Returns (position, clamped). Nothing is ever refused outright: an
+        out-of-reach target is clamped to the edge of the allowed volume, so the
+        arm tracks as far as it may and waits there. Refusing is move_to_pose's
+        job, and it still applies on the plan-mode path.
         """
         desired = standoff_pose(*target, self.args.grasp_type, self.args.standoff)
 
@@ -230,13 +286,25 @@ class HandFollower(Node):
         if target is None:
             age = self._monitor.age()
             if not self._monitor.ever_seen:
-                self.get_logger().warn(
-                    "No hand target yet on /perception/hand_target.",
-                    throttle_duration_sec=5.0,
-                )
+                rejected = self._monitor.rejected_labels
+                if rejected:
+                    # Something IS tracking, it is just not what was asked for.
+                    # Naming both sides turns a silent stall into a one-line fix.
+                    self.get_logger().warn(
+                        f"Following {self._target_desc}, but /perception/hand_target "
+                        f"is publishing {sorted(rejected)}. Relaunch control.launch.py "
+                        f"with the source you want (hand_source:=apriltag for tags, "
+                        f"hand_source:=detections for hands) or pass --target any.",
+                        throttle_duration_sec=5.0,
+                    )
+                else:
+                    self.get_logger().warn(
+                        "No target yet on /perception/hand_target.",
+                        throttle_duration_sec=5.0,
+                    )
             else:
                 self.get_logger().warn(
-                    f"Hand target stale ({age:.1f}s old); holding.",
+                    f"Target stale ({age:.1f}s old); holding.",
                     throttle_duration_sec=2.0,
                 )
 
@@ -284,7 +352,13 @@ class HandFollower(Node):
             return
         goal = MoveToNamedPose.Goal()
         goal.pose_name = self.args.watch_pose
-        self._motion.move_to_named_pose.send_goal_async(goal)
+        # Tracked like any other hop: without this the next target to appear
+        # would fire a MoveToPose while the arm is still moving to the watch
+        # pose, leaving two goals in move_group at once.
+        self._goal_pending = True
+        self._motion.move_to_named_pose.send_goal_async(goal).add_done_callback(
+            self._on_goal_response
+        )
 
     # ---- Plan mode ----
 
@@ -448,6 +522,17 @@ def parse_args(argv):
     )
     add_common_args(parser)
     parser.add_argument('--mode', choices=[MODE_PLAN, MODE_SERVO], default=MODE_PLAN)
+    parser.add_argument(
+        '--target', choices=[TARGET_ANY, TARGET_TAG, TARGET_HAND],
+        default=TARGET_ANY,
+        help="Which kind of target to follow, matched on TrackedTarget.label. "
+             "Does NOT start a detector: run control.launch.py with "
+             "hand_source:=apriltag or hand_source:=detections for that.",
+    )
+    parser.add_argument(
+        '--target-label', default=None,
+        help="Follow only this exact label (e.g. 'tag_3'), overriding --target.",
+    )
     parser.add_argument(
         '--standoff', type=float, default=0.15,
         help="Metres to hold back from the hand along the approach axis.",
